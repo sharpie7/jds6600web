@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>JDS6600</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+		}
+		h1 {
+			text-align: center;
+			margin-top: 1em;
+		}
+		#serial-error {
+			color: red;
+		}
+		canvas {
+			width: 200px;
+			height: 150px;
+			margin: 1em;
+		}
+		.container {
+			max-width: 800px;
+			margin: 0 auto;
+			padding: 1em;
+		}
+		.waves {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-top: 1em;
+		}
+		.waves button {
+			padding: 0.1em;
+			flex-grow: 1;
+			margin: 0 0.1em;
+		}
+		.form-group {
+			display: flex;
+			flex-direction: column;
+			margin-top: 1em;
+		}
+		.form-group label {
+			margin-bottom: 0.5em;
+			margin-top: 1em;
+		}
+		.form-group input {
+			padding: 0.5em;
+			border: 1px solid #ccc;
+			border-radius: 3px;
+			max-width: 200px;
+		}
+		.input-container {
+			margin-left:4px;
+			display: flex;
+			align-items: right;
+		}
+		#units-buttons, #amp-units-buttons, #offset-units-buttons {
+			display: flex;
+			flex-wrap: wrap;
+		}
+		#units-buttons button.active, .waves button.active {
+			background-color: yellow;
+		}
+		#units-buttons button, #amp-units-buttons button, #offset-units-buttons button {
+			flex: 1;
+		margin-right: 5px;
+		margin-left: 10px;
+		background-color: #eee;
+		border: 1px solid #ccc;
+		border-radius: 5px;
+		cursor: pointer;
+		}
+		#units-buttons button, #amp-units-buttons button, #offset-units-buttons button:focus {
+			outline: none;
+		}
+		@media only screen and (max-width: 600px) {
+			.waves {
+				flex-wrap: wrap;
+			}
+			.waves button {
+				flex-basis: 100%;
+				margin: 0.5em 0;
+			}
+		}
+	</style>
+</head>
+<body>
+  <h1>JDS6600</h1>
+  <h1 hidden id="serial-error">Serial Connection Error</h1>
+		<div class="waves">
+			<button id="SINE">Sine</button>
+			<button id="SQUARE">Square</button>
+			<button id="PULSE">Pulse</button>
+			<button id="TRIANGLE">Triangle</button>
+			<button id="CMOS">CMOS</button>
+		</div>
+		<div class="form-group">
+  <label for="freq">Frequency:</label>
+  <div class="input-container">
+  <input type="text" inputmode="decimal" id="freq" name="freq">
+  <div id="units-buttons">
+    <button value=0 id="hz-btn">Hz</button>
+    <button value=1 id="khz-btn">kHz</button>
+    <button value=2 id="mhz-btn">MHz</button>
+  </div>
+  </div>
+  <br>
+  
+  <label for="amp">Amplitude:</label>
+  <div class="input-container">
+  <input type="text" inputmode="decimal" id="amp" name="amp">
+  V
+  </div>
+  <br>
+  
+  <label for="offset">Offset:</label>
+      <div class="input-container">
+  <input type="text"  inputmode="decimal" id="offset" name="offset">
+  V
+  </div>
+  <br>
+
+  <label for="duty-cycle">Duty Cycle:</label>
+  <div class="input-container">
+  <input type="text" inputmode="decimal" id="duty-cycle" name="duty-cycle" step="any" min="0" max="100">
+  %
+  </div>
+  <br>
+
+<canvas id="canvas" width="400" height = "400"></canvas>
+  <script>
+    const freqInput = document.getElementById("freq");
+    const ampInput = document.getElementById("amp");
+    const offsetInput = document.getElementById("offset");
+    const dutyCycleInput = document.getElementById("duty-cycle");
+    const hzBtn = document.getElementById("hz-btn");
+    const khzBtn = document.getElementById("khz-btn");
+    const mhzBtn = document.getElementById("mhz-btn");
+	const funitButtons = document.querySelectorAll('#units-buttons button');
+	const waveButtons = document.querySelectorAll('.waves button');
+	const canvas = document.getElementById("canvas");
+	const context = canvas.getContext("2d");
+
+	const sineBtn = document.getElementById("sine");
+	const squareBtn = document.getElementById("square");
+	const pulseBtn = document.getElementById("pulse");
+	const triangleBtn = document.getElementById("triangle");
+
+
+
+function loadValues(qs="") {
+	// Create a new XHR object
+	var xhr = new XMLHttpRequest();
+
+	// Set up the request
+		xhr.open('GET', '/control' + qs);
+
+	// Set the Content-Type header if sending data
+	// xhr.setRequestHeader('Content-Type', 'application/json');
+
+	// Handle the response
+	xhr.onload = function() {
+	  if (xhr.status === 200) {
+		document.getElementById("serial-error").setAttribute("hidden", "")
+		// Parse the JSON response
+		var data = JSON.parse(xhr.responseText);
+		console.log(data)
+		// Set the field values on the web page
+		waveType = data.wave
+		setUniqueActiveButton(waveButtons,document.getElementById(data.wave));
+		freqInput.value = data.freq/[1,1000,1000000][data.freqm];
+		setActiveFunitButton(funitButtons[data.freqm]);
+		amp = ampInput.value = data.ampl;
+		offsetInput.value = data.offs;
+		dutyCycleInput.value = data.duty;
+		drawWaveform(data);
+	  } else {
+	    document.getElementById("serial-error").removeAttribute("hidden")
+		console.log('Request failed.  Returned status of ' + xhr.status);
+	  }
+	};
+
+	// Send the request
+	xhr.send();
+
+	}
+
+let activeFunitButton;
+
+function setUniqueActiveButton(buttonGroup, button) {
+	buttonGroup.forEach(otherButton => otherButton.classList.remove('active'));
+	button.classList.add('active');
+	return button.value
+}
+
+function setActiveFunitButton(button) {
+	setUniqueActiveButton(funitButtons, button);
+	activeFunitButton = button;
+}
+
+funitButtons.forEach(button => {
+  button.addEventListener('click', () => {
+	setActiveFunitButton(button);
+	updateFreq();
+  });
+});
+
+waveButtons.forEach(button => {
+  button.addEventListener('click', () => {
+	setUniqueActiveButton(waveButtons, button);
+	waveType = button.id;
+	loadValues(`?wave=${waveType}`);
+  });
+});
+
+
+function drawWaveform(data) {
+  waveType = data.wave;
+  amp = parseFloat(data.ampl);
+  offset = parseFloat(data.offs);
+  dutyCycle = parseInt(data.duty);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (waveType != "CMOS")
+	vRange = (amp/2+Math.abs(offset));
+  else
+	vRange = (amp);  
+
+  context.beginPath();
+  context.strokeStyle = "red"
+  context.lineWidth = 3;
+  context.moveTo(0, canvas.height / 2);
+  context.lineTo(canvas.width, canvas.height/2);
+  context.stroke();
+
+  const pointsPerCycle = 100;
+  const cyclesToDraw = 2;
+  const radiansPerPoint = (Math.PI * 2) / pointsPerCycle;
+
+  context.beginPath();
+  context.strokeStyle = "black";
+  context.lineWidth = 1;
+  for (let i = 0; i < pointsPerCycle * cyclesToDraw; i++) {
+    const x = canvas.width * i / (pointsPerCycle * cyclesToDraw);
+
+    let waveValue = 0;
+    switch (waveType) {
+      case "SINE":
+        waveValue = Math.sin(i * radiansPerPoint) * amp / 2 + offset;
+        break;
+      case "SQUARE":
+        waveValue = i % pointsPerCycle < pointsPerCycle * 0.5 ? 1 : -1;
+		waveValue = waveValue * amp / 2 + offset;
+        break;
+      case "PULSE":
+        waveValue = i % pointsPerCycle < pointsPerCycle * dutyCycle/100 ? 1 : -1;
+		waveValue = waveValue * amp / 2 + offset;
+        break;
+      case "TRIANGLE":
+		waveValue = i % pointsPerCycle < pointsPerCycle * dutyCycle/100 ? (i % pointsPerCycle) / (pointsPerCycle * dutyCycle /200)-1 : (pointsPerCycle - (i % pointsPerCycle)) / (pointsPerCycle * (100-dutyCycle)/200) -1;
+		waveValue = waveValue * amp / 2 + offset;
+        break;
+	  case "CMOS":
+		waveValue = i % pointsPerCycle < pointsPerCycle * dutyCycle/100 ? 1 : 0;
+		waveValue = waveValue * amp;
+		break;
+    }
+
+    const pixelValue = canvas.height / 2 - waveValue  * canvas.height / (2 * vRange);
+	if (i!=0)
+		context.lineTo(x, pixelValue);
+	else
+		context.moveTo(x, pixelValue);
+  }
+  context.stroke();
+  
+  context.font = "32px sans-serif";
+  context.textAlign = "right";
+  context.fillText(`${vRange}V`, canvas.width - 20, 40);
+}
+
+
+
+function updateFreq() {
+  freqm = activeFunitButton.value;
+  freq = parseFloat(freqInput.value)*[1,1000,1000000][freqm];
+  loadValues(`?freq=${freq}&freqm=${activeFunitButton.value}`);
+}
+
+freqInput.addEventListener("change", () => {
+  updateFreq()
+});
+
+ampInput.addEventListener("change", () => {
+  amp = parseFloat(ampInput.value);
+  loadValues(`?ampl=${amp}`);
+});
+
+offsetInput.addEventListener("change", () => {
+  offset = parseFloat(offsetInput.value);
+  loadValues(`?offs=${offset}`);
+});
+
+dutyCycleInput.addEventListener("change", () => {
+  dutyCycle = parseFloat(dutyCycleInput.value) ;
+  loadValues(`?duty=${dutyCycle}`);
+});
+
+loadValues();
+freqInput.focus();
+
+</script>
+</body>
+</html>
