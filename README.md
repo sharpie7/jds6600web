@@ -1,4 +1,5 @@
-#JDS6600 Web
+# JDS6600 Web
+
 Hacky web-server to control the JDS6600 signal generator over a serial connection.
 
 Only supports the normal signal-generator mode on Channel 1.
